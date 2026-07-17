@@ -1,0 +1,23 @@
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+# Pin ruff's default rule set explicitly so local runs match the CI job
+# (`ruff check .` with ruff 0.14.14, which selects these by default).
+select = ["E4", "E7", "E9", "F"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Modules under test (database.py, feedback.py) live at the repo root.
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.mypy]
+python_version = "3.12"
+# Lenient: this is an application, not a typed library. Keep type-checking
+# advisory rather than blocking so it never gates CI on untyped third parties.
+ignore_missing_imports = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+warn_return_any = false
+warn_unused_configs = false
