@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from dotenv import load_dotenv
 from rag import generate_response
 from database import init_db, SessionLocal, ChatHistory
-from feedback import save_feedback
+from feedback import FeedbackCallbackError, parse_feedback_callback, save_feedback
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import logging
 
@@ -79,17 +79,22 @@ async def handle_message(message: types.Message):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('fb_'))
 async def process_callback_feedback(callback_query: types.CallbackQuery):
-    data = callback_query.data.split('_')
-    action = data[1] # like or dislike
-    chat_id = int(data[2])
+    # Never trust callback_data: it can be stale, truncated, or spoofed. Parse
+    # defensively and fail with a friendly message instead of crashing.
+    try:
+        action, chat_id = parse_feedback_callback(callback_query.data)
+    except FeedbackCallbackError as e:
+        logging.warning(f"Ignoring malformed feedback callback: {e}")
+        await callback_query.answer("Sorry, that feedback button is no longer valid.")
+        return
+
     user_id = str(callback_query.from_user.id)
-    
     is_positive = (action == "like")
-    
+
     # Save feedback. For simplicity, document_ids is empty here.
     # In a real app, we should retrieve the document_ids associated with chat_id.
     save_feedback(chat_id, user_id, is_positive, correction="", document_ids=[])
-    
+
     await callback_query.answer("Thank you for your feedback!")
 
 async def main():
