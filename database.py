@@ -5,14 +5,17 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Engine,
     Integer,
     String,
     Text,
     create_engine,
 )
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class ChatHistory(Base):
@@ -43,10 +46,10 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///adaptive_rag.db')
 # Module-level engine, built lazily (never at import time). Constructing the
 # engine on import used to open a connection to the configured database, which
 # made the module impossible to import in a test process without side effects.
-engine = None
+engine: Engine | None = None
 
 
-def make_engine(url: str | None = None):
+def make_engine(url: str | None = None) -> Engine:
     """Create a fresh SQLAlchemy engine for ``url`` (defaults to DATABASE_URL).
 
     Pure factory: it does not touch module state, so tests can spin up
@@ -58,7 +61,7 @@ def make_engine(url: str | None = None):
     return create_engine(url, connect_args=connect_args)
 
 
-def init_engine(url: str | None = None):
+def init_engine(url: str | None = None) -> Engine:
     """Build the module-level engine and bind :data:`SessionLocal` to it."""
     global engine
     engine = make_engine(url)
@@ -83,11 +86,10 @@ class _LazySessionLocal(sessionmaker):
 SessionLocal = _LazySessionLocal(autocommit=False, autoflush=False)
 
 
-def init_db(url: str | None = None):
+def init_db(url: str | None = None) -> None:
     """Ensure the engine exists, then create all tables."""
-    if engine is None:
-        init_engine(url)
-    Base.metadata.create_all(bind=engine)
+    active = engine if engine is not None else init_engine(url)
+    Base.metadata.create_all(bind=active)
 
 
 def compute_feedback_stats(db: Session) -> dict[str, int]:

@@ -18,6 +18,13 @@ jobs:
         run: pip install ruff==0.14.14
       - name: Ruff lint
         run: ruff check .
+      - name: Install mypy
+        run: pip install mypy
+      - name: Type-check with mypy
+        # The lenient [tool.mypy] config ignores missing third-party stubs, so
+        # the heavy runtime deps (aiogram/langchain/fastapi/sqlalchemy) need not
+        # be installed for the static gate to pass.
+        run: mypy .
       - name: Byte-compile sources
         run: python -m compileall -q .
 

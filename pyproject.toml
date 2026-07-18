@@ -14,6 +14,11 @@ addopts = "-ra"
 
 [tool.mypy]
 python_version = "3.12"
+# Treat the repo root as the single package base so `scripts/seed_demo_db.py`
+# resolves unambiguously to `scripts.seed_demo_db` (matching how the tests
+# import it) instead of colliding with a top-level `seed_demo_db` module.
+explicit_package_bases = true
+mypy_path = "."
 # Lenient: this is an application, not a typed library. Keep type-checking
 # advisory rather than blocking so it never gates CI on untyped third parties.
 ignore_missing_imports = true

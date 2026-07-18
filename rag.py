@@ -31,7 +31,7 @@ def get_retriever():
 # Bounded LRU of per-session memory so a long-running bot does not leak RAM
 # as new sessions appear. Oldest sessions are evicted past MAX_SESSION_MEMORIES.
 MAX_SESSION_MEMORIES = int(os.getenv("MAX_SESSION_MEMORIES", "1000"))
-session_memories = OrderedDict()
+session_memories: OrderedDict[str, ConversationBufferMemory] = OrderedDict()
 
 def get_memory(session_id: str):
     if session_id in session_memories:
