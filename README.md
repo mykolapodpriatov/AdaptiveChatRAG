@@ -33,3 +33,19 @@ Supports user feedback to correct vector indices and improve search params.
    ```bash
    uvicorn app:app --reload
    ```
+
+## Offline demo
+
+No Telegram token or OpenAI key? Seed a throwaway SQLite database with a few
+chat-history and feedback rows and print the aggregate stats:
+
+```bash
+python scripts/seed_demo_db.py
+```
+
+By default this writes to `sqlite:///adaptive_rag_demo.db`. Point it elsewhere
+(including an ephemeral in-memory database) with `--db-url`:
+
+```bash
+python scripts/seed_demo_db.py --db-url "sqlite:///:memory:"
+```

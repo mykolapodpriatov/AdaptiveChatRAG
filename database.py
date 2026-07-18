@@ -5,14 +5,17 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Engine,
     Integer,
     String,
     Text,
     create_engine,
 )
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class ChatHistory(Base):
@@ -43,10 +46,10 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///adaptive_rag.db')
 # Module-level engine, built lazily (never at import time). Constructing the
 # engine on import used to open a connection to the configured database, which
 # made the module impossible to import in a test process without side effects.
-engine = None
+engine: Engine | None = None
 
 
-def make_engine(url: str | None = None):
+def make_engine(url: str | None = None) -> Engine:
     """Create a fresh SQLAlchemy engine for ``url`` (defaults to DATABASE_URL).
 
     Pure factory: it does not touch module state, so tests can spin up
@@ -58,7 +61,7 @@ def make_engine(url: str | None = None):
     return create_engine(url, connect_args=connect_args)
 
 
-def init_engine(url: str | None = None):
+def init_engine(url: str | None = None) -> Engine:
     """Build the module-level engine and bind :data:`SessionLocal` to it."""
     global engine
     engine = make_engine(url)
@@ -83,11 +86,40 @@ class _LazySessionLocal(sessionmaker):
 SessionLocal = _LazySessionLocal(autocommit=False, autoflush=False)
 
 
-def init_db(url: str | None = None):
+def init_db(url: str | None = None) -> None:
     """Ensure the engine exists, then create all tables."""
-    if engine is None:
-        init_engine(url)
-    Base.metadata.create_all(bind=engine)
+    active = engine if engine is not None else init_engine(url)
+    Base.metadata.create_all(bind=active)
+
+
+def compute_feedback_stats(db: Session) -> dict[str, int]:
+    """Return feedback counts bucketed by the ``is_positive`` flag.
+
+    ``positive`` counts rows where ``is_positive`` is True and ``negative``
+    where it is False; NULL values land in their own ``unknown`` bucket instead
+    of being silently miscounted as negative. ``total_feedback`` always equals
+    ``positive + negative + unknown``.
+    """
+    total = db.query(Feedback).count()
+    positive = db.query(Feedback).filter(Feedback.is_positive.is_(True)).count()
+    negative = db.query(Feedback).filter(Feedback.is_positive.is_(False)).count()
+    unknown = total - positive - negative
+    return {
+        "total_feedback": total,
+        "positive": positive,
+        "negative": negative,
+        "unknown": unknown,
+    }
+
+
+def fetch_session_history(db: Session, session_id: str) -> list[ChatHistory]:
+    """Return a session's chat history ordered oldest-first."""
+    return (
+        db.query(ChatHistory)
+        .filter(ChatHistory.session_id == session_id)
+        .order_by(ChatHistory.timestamp)
+        .all()
+    )
 
 
 if __name__ == "__main__":

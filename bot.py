@@ -1,5 +1,7 @@
 import asyncio
 import os
+from typing import cast
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from dotenv import load_dotenv
@@ -73,7 +75,7 @@ async def handle_message(message: types.Message):
         # Send response with feedback keyboard
         # In a real app we'd need to map bot_msg.id to the inline keyboard
         # For now we use the DB record ID
-        await message.answer(answer, reply_markup=get_feedback_keyboard(bot_msg.id))
+        await message.answer(answer, reply_markup=get_feedback_keyboard(cast(int, bot_msg.id)))
     finally:
         db.close()
 
