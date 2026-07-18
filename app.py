@@ -1,8 +1,10 @@
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from sqlalchemy.orm import Session
-from database import SessionLocal, Feedback, ChatHistory
+
+from database import SessionLocal, compute_feedback_stats, fetch_session_history
 
 app = FastAPI(title="AdaptiveChatRAG API")
+
 
 def get_db():
     db = SessionLocal()
@@ -11,18 +13,17 @@ def get_db():
     finally:
         db.close()
 
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to AdaptiveChatRAG Admin Panel API"}
 
+
 @app.get("/stats/feedback")
 def get_feedback_stats(db: Session = Depends(get_db)):
-    total = db.query(Feedback).count()
-    positive = db.query(Feedback).filter(Feedback.is_positive).count()
-    negative = total - positive
-    return {"total_feedback": total, "positive": positive, "negative": negative}
+    return compute_feedback_stats(db)
+
 
 @app.get("/history/{session_id}")
 def get_history(session_id: str, db: Session = Depends(get_db)):
-    history = db.query(ChatHistory).filter(ChatHistory.session_id == session_id).order_by(ChatHistory.timestamp).all()
-    return history
+    return fetch_session_history(db, session_id)

@@ -90,5 +90,35 @@ def init_db(url: str | None = None):
     Base.metadata.create_all(bind=engine)
 
 
+def compute_feedback_stats(db: Session) -> dict[str, int]:
+    """Return feedback counts bucketed by the ``is_positive`` flag.
+
+    ``positive`` counts rows where ``is_positive`` is True and ``negative``
+    where it is False; NULL values land in their own ``unknown`` bucket instead
+    of being silently miscounted as negative. ``total_feedback`` always equals
+    ``positive + negative + unknown``.
+    """
+    total = db.query(Feedback).count()
+    positive = db.query(Feedback).filter(Feedback.is_positive.is_(True)).count()
+    negative = db.query(Feedback).filter(Feedback.is_positive.is_(False)).count()
+    unknown = total - positive - negative
+    return {
+        "total_feedback": total,
+        "positive": positive,
+        "negative": negative,
+        "unknown": unknown,
+    }
+
+
+def fetch_session_history(db: Session, session_id: str) -> list[ChatHistory]:
+    """Return a session's chat history ordered oldest-first."""
+    return (
+        db.query(ChatHistory)
+        .filter(ChatHistory.session_id == session_id)
+        .order_by(ChatHistory.timestamp)
+        .all()
+    )
+
+
 if __name__ == "__main__":
     init_db()
