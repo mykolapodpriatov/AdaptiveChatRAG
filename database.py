@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from typing import cast
 
 from sqlalchemy import (
     Boolean,
@@ -26,6 +27,10 @@ class ChatHistory(Base):
     user_id = Column(String, index=True)
     message = Column(Text)
     is_bot = Column(Boolean, default=False)
+    # Comma-separated source document IDs returned by generate_response() for
+    # bot messages, so a later 👎 on this message can thread the real IDs into
+    # save_feedback() instead of an empty list. Unused for user messages.
+    document_ids = Column(String)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 
@@ -120,6 +125,33 @@ def fetch_session_history(db: Session, session_id: str) -> list[ChatHistory]:
         .order_by(ChatHistory.timestamp)
         .all()
     )
+
+
+def encode_document_ids(document_ids: list) -> str:
+    """Serialize document ids into the comma-separated form stored on both
+    ``ChatHistory.document_ids`` and ``Feedback.document_ids``.
+    """
+    return ",".join(str(doc_id) for doc_id in document_ids)
+
+
+def decode_document_ids(value: str | None) -> list[str]:
+    """Inverse of :func:`encode_document_ids`. Empty/None decodes to ``[]``."""
+    if not value:
+        return []
+    return value.split(",")
+
+
+def fetch_chat_history_document_ids(db: Session, history_id: int) -> list[str]:
+    """Return the document ids stored on a ``ChatHistory`` row.
+
+    Used to thread ``generate_response()``'s doc IDs (persisted when the
+    bot's answer was saved) into ``save_feedback()`` when a user reacts to
+    that message later. Returns ``[]`` if the row is missing or has none.
+    """
+    record = db.get(ChatHistory, history_id)
+    if record is None:
+        return []
+    return decode_document_ids(cast(str | None, record.document_ids))
 
 
 if __name__ == "__main__":
