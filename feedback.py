@@ -1,4 +1,4 @@
-from database import SessionLocal, Feedback
+from database import SessionLocal, Feedback, encode_document_ids
 
 # Callback payloads are formatted as "fb_<action>_<history_id>" (see bot.py).
 _CALLBACK_PREFIX = "fb"
@@ -48,7 +48,7 @@ def save_feedback(chat_id: int, user_id: str, is_positive: bool, correction: str
             is_positive=is_positive,
             correction=correction,
             # Coerce ids to str so non-string ids (e.g. ints) don't raise TypeError.
-            document_ids=",".join(map(str, document_ids))
+            document_ids=encode_document_ids(document_ids)
         )
         db.add(feedback)
         db.commit()
