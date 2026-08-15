@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import app
+from feedback import save_feedback
 
 ADMIN_KEY = "test-admin-key"
 
@@ -60,3 +61,42 @@ def test_history_correct_key_is_200(client, auth_headers):
     response = client.get("/history/session-1", headers=auth_headers)
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_feedback_csv_missing_key_is_401(client):
+    response = client.get("/feedback.csv")
+    assert response.status_code == 401
+
+
+def test_feedback_csv_wrong_key_is_401(client):
+    response = client.get("/feedback.csv", headers={"X-API-Key": "wrong-key"})
+    assert response.status_code == 401
+
+
+def test_feedback_csv_empty_db_is_header_only(client, auth_headers):
+    response = client.get("/feedback.csv", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    lines = [line for line in response.text.splitlines() if line]
+    assert lines == ["history_id,user_id,is_positive,correction,document_ids,created_at"]
+
+
+def test_feedback_csv_includes_saved_row(client, auth_headers):
+    save_feedback(
+        chat_id=42,
+        user_id="user-1",
+        is_positive=True,
+        correction="",
+        document_ids=["doc-1", "doc-2"],
+    )
+
+    response = client.get("/feedback.csv", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+
+    lines = [line for line in response.text.splitlines() if line]
+    assert lines[0] == "history_id,user_id,is_positive,correction,document_ids,created_at"
+    assert len(lines) == 2
+    assert "42" in lines[1]
+    assert "user-1" in lines[1]
+    assert "doc-1,doc-2" in lines[1]
