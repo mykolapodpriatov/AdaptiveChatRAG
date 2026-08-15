@@ -13,6 +13,7 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class Base(DeclarativeBase):
@@ -63,7 +64,12 @@ def make_engine(url: str | None = None) -> Engine:
     url = url or DATABASE_URL
     # check_same_thread is a SQLite-only flag; other backends raise TypeError.
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=connect_args)
+    # :memory: is per-connection unless we pin a single StaticPool connection,
+    # which FastAPI TestClient needs (the endpoint runs on a worker thread).
+    kwargs: dict = {}
+    if url.startswith("sqlite") and ":memory:" in url:
+        kwargs["poolclass"] = StaticPool
+    return create_engine(url, connect_args=connect_args, **kwargs)
 
 
 def init_engine(url: str | None = None) -> Engine:
