@@ -133,6 +133,11 @@ def fetch_session_history(db: Session, session_id: str) -> list[ChatHistory]:
     )
 
 
+def fetch_feedback_rows(db: Session) -> list[Feedback]:
+    """Return every feedback row, oldest-first (by primary key)."""
+    return db.query(Feedback).order_by(Feedback.id).all()
+
+
 def encode_document_ids(document_ids: list) -> str:
     """Serialize document ids into the comma-separated form stored on both
     ``ChatHistory.document_ids`` and ``Feedback.document_ids``.
