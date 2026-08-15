@@ -36,9 +36,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install minimal test deps
-        # Intentionally NOT `-r requirements.txt`: the test suite only touches
-        # database.py/feedback.py, which need nothing beyond SQLAlchemy. Pulling
-        # langchain/chromadb/aiogram would bloat the job for no benefit.
-        run: pip install pytest sqlalchemy
+        # Intentionally NOT `-r requirements.txt`: skip langchain/chromadb/aiogram.
+        # fastapi + httpx are needed for tests/test_app.py (TestClient).
+        run: pip install pytest sqlalchemy "fastapi==0.104.1" "httpx==0.27.2"
       - name: Run tests
         run: pytest -q

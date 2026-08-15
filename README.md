@@ -20,6 +20,7 @@ Supports user feedback to correct vector indices and improve search params.
    ```bash
    export TELEGRAM_BOT_TOKEN="your_token"
    export OPENAI_API_KEY="your_openai_api_key"
+   export ADMIN_API_KEY="your_admin_api_key"
    ```
 4. Initialize the database:
    ```bash
