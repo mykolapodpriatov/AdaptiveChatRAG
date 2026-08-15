@@ -41,6 +41,24 @@ class FeedbackStates(StatesGroup):
     awaiting_correction = State()
 
 
+def format_reply_with_sources(answer: str, document_ids: list) -> str:
+    """Append a short ``Sources:`` footer for the Telegram reply.
+
+    Hidden when there are no ids, or when every id is the ``unknown``
+    sentinel ``generate_response()`` uses for sources with no metadata id.
+    The stored ``ChatHistory.message`` stays the raw answer; only the
+    outgoing Telegram text includes this footer.
+    """
+    visible = [
+        str(doc_id)
+        for doc_id in document_ids
+        if str(doc_id) and str(doc_id) != "unknown"
+    ]
+    if not visible:
+        return answer
+    return f"{answer}\n\nSources: {', '.join(visible)}"
+
+
 def get_feedback_keyboard(history_id: int):
     # history_id is the ChatHistory primary key of the bot message, embedded in
     # callback data so feedback can be linked back to the stored message.
@@ -120,10 +138,13 @@ async def handle_message(message: types.Message):
         db.add(bot_msg)
         db.commit()
 
-        # Send response with feedback keyboard
-        # In a real app we'd need to map bot_msg.id to the inline keyboard
-        # For now we use the DB record ID
-        await message.answer(answer, reply_markup=get_feedback_keyboard(cast(int, bot_msg.id)))
+        # Send response with feedback keyboard. Footer is display-only so
+        # ChatHistory.message stays the raw answer; feedback still keys
+        # off bot_msg.id.
+        await message.answer(
+            format_reply_with_sources(answer, doc_ids),
+            reply_markup=get_feedback_keyboard(cast(int, bot_msg.id)),
+        )
     finally:
         db.close()
 
