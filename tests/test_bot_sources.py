@@ -8,6 +8,7 @@ import asyncio
 import os
 import sys
 import types
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from database import ChatHistory, SessionLocal
@@ -23,6 +24,17 @@ def _passthrough(*_args, **_kwargs):
     return deco
 
 
+def _stub_module(name: str, **attrs: object) -> Any:
+    """Build a throwaway module carrying ``attrs``.
+
+    Returns ``Any`` because mypy rejects attribute assignment on
+    ``types.ModuleType``: these names exist only for this test run.
+    """
+    module = types.ModuleType(name)
+    module.__dict__.update(attrs)
+    return module
+
+
 class _FakeDispatcher:
     def __init__(self, *args, **kwargs):
         pass
@@ -31,50 +43,44 @@ class _FakeDispatcher:
     callback_query = staticmethod(_passthrough)
 
 
+class _State:
+    pass
+
+
+class _StatesGroup:
+    pass
+
+
 def _install_bot_stubs() -> None:
     if getattr(sys.modules.get("aiogram"), "_is_test_stub", False):
         return
 
-    aiogram = types.ModuleType("aiogram")
-    aiogram._is_test_stub = True
-    aiogram.Bot = MagicMock()
-    aiogram.Dispatcher = _FakeDispatcher
+    aiogram_types = _stub_module(
+        "aiogram.types",
+        Message=type("Message", (), {}),
+        CallbackQuery=type("CallbackQuery", (), {}),
+        InlineKeyboardMarkup=MagicMock(),
+        InlineKeyboardButton=MagicMock(),
+    )
+    aiogram_filters = _stub_module("aiogram.filters", Command=MagicMock())
+    aiogram_fsm_context = _stub_module("aiogram.fsm.context", FSMContext=type("FSMContext", (), {}))
+    aiogram_fsm_state = _stub_module("aiogram.fsm.state", State=_State, StatesGroup=_StatesGroup)
+    aiogram_fsm_storage = _stub_module("aiogram.fsm.storage")
+    aiogram_fsm_memory = _stub_module("aiogram.fsm.storage.memory", MemoryStorage=MagicMock())
+    aiogram_fsm = _stub_module("aiogram.fsm")
 
-    aiogram_types = types.ModuleType("aiogram.types")
-    aiogram_types.Message = type("Message", (), {})
-    aiogram_types.CallbackQuery = type("CallbackQuery", (), {})
-    aiogram_types.InlineKeyboardMarkup = MagicMock()
-    aiogram_types.InlineKeyboardButton = MagicMock()
+    aiogram = _stub_module(
+        "aiogram",
+        _is_test_stub=True,
+        Bot=MagicMock(),
+        Dispatcher=_FakeDispatcher,
+        types=aiogram_types,
+        filters=aiogram_filters,
+        fsm=aiogram_fsm,
+    )
 
-    aiogram_filters = types.ModuleType("aiogram.filters")
-    aiogram_filters.Command = MagicMock()
-
-    aiogram_fsm = types.ModuleType("aiogram.fsm")
-    aiogram_fsm_context = types.ModuleType("aiogram.fsm.context")
-    aiogram_fsm_context.FSMContext = type("FSMContext", (), {})
-    aiogram_fsm_state = types.ModuleType("aiogram.fsm.state")
-
-    class State:
-        pass
-
-    class StatesGroup:
-        pass
-
-    aiogram_fsm_state.State = State
-    aiogram_fsm_state.StatesGroup = StatesGroup
-    aiogram_fsm_storage = types.ModuleType("aiogram.fsm.storage")
-    aiogram_fsm_memory = types.ModuleType("aiogram.fsm.storage.memory")
-    aiogram_fsm_memory.MemoryStorage = MagicMock()
-
-    aiogram.types = aiogram_types
-    aiogram.filters = aiogram_filters
-    aiogram.fsm = aiogram_fsm
-
-    dotenv = types.ModuleType("dotenv")
-    dotenv.load_dotenv = lambda: None
-
-    rag = types.ModuleType("rag")
-    rag.generate_response = MagicMock(return_value=("hi", ["doc-1"]))
+    dotenv = _stub_module("dotenv", load_dotenv=lambda: None)
+    rag = _stub_module("rag", generate_response=MagicMock(return_value=("hi", ["doc-1"])))
 
     sys.modules.update(
         {
@@ -90,7 +96,6 @@ def _install_bot_stubs() -> None:
             "rag": rag,
         }
     )
-
 
 _install_bot_stubs()
 
