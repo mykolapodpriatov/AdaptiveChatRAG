@@ -1,9 +1,11 @@
 import os
 from collections import OrderedDict
+from datetime import datetime
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
+from langchain_core.retrievers import BaseRetriever
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,9 +26,63 @@ def add_documents(texts, metadatas=None):
     # Chroma 0.4.x+ persists automatically; persist() is deprecated/a no-op.
     get_vectorstore().add_texts(texts=texts, metadatas=metadatas)
 
+DEFAULT_K = int(os.getenv("RETRIEVER_K", "4"))
+
+
+def _document_id(document) -> str:
+    """The id a piece of feedback would name this document by."""
+    return str(document.metadata.get("id", "unknown"))
+
+
+def retrieve_with_demotion(question: str, k: int = DEFAULT_K, now=None):
+    """Retrieve for ``question``, demoting documents with negative feedback.
+
+    Over-fetches, subtracts each document's accumulated penalty from its
+    relevance score, then truncates. Over-fetching is what makes this a
+    demotion rather than a filter: a document pushed down needs somewhere to go,
+    and a document that should rise has to have been fetched in the first place.
+
+    The penalty is bounded and decays; see :mod:`ranking` for why.
+    """
+    from database import SessionLocal, fetch_document_penalties
+    from ranking import PenaltyRecord, demote, overfetch_size, penalties_by_id
+
+    pairs = get_vectorstore().similarity_search_with_relevance_scores(
+        question, k=overfetch_size(k)
+    )
+    documents = {_document_id(document): document for document, _score in pairs}
+    candidates = [(_document_id(document), float(score)) for document, score in pairs]
+
+    db = SessionLocal()
+    try:
+        rows = fetch_document_penalties(db, list(documents))
+        penalties = penalties_by_id(
+            PenaltyRecord(
+                document_id=row.document_id,
+                negative_count=row.negative_count or 0,
+                last_negative_at=row.last_negative_at,
+            )
+            for row in rows
+        )
+    finally:
+        db.close()
+
+    ranked = demote(candidates, penalties, k=k, now=now or datetime.utcnow())
+    return [documents[document_id] for document_id, _score in ranked]
+
+
+class DemotingRetriever(BaseRetriever):
+    """A retriever that applies feedback demotion, for the LangChain chain."""
+
+    k: int = DEFAULT_K
+
+    def _get_relevant_documents(self, query: str, *, run_manager=None):
+        return retrieve_with_demotion(query, k=self.k)
+
+
 def get_retriever():
-    # Retrieve documents. We could adjust search_kwargs based on feedback.
-    return get_vectorstore().as_retriever(search_kwargs={"k": 4})
+    """The retriever the conversational chain uses."""
+    return DemotingRetriever()
 
 # Bounded LRU of per-session memory so a long-running bot does not leak RAM
 # as new sessions appear. Oldest sessions are evicted past MAX_SESSION_MEMORIES.
