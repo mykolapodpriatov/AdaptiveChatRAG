@@ -47,6 +47,23 @@ class Feedback(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 
+class DocumentPenalty(Base):
+    """Accumulated negative feedback for one document.
+
+    Per document, not per (query, document). The Telegram callback carries the
+    document ids and the message id but not the question text, so a per-pair
+    penalty is not expressible from what is recorded today without changing
+    what the callback sends. The schema can grow a nullable query key later
+    without moving any of this.
+    """
+
+    __tablename__ = 'document_penalty'
+
+    document_id = Column(String, primary_key=True, index=True)
+    negative_count = Column(Integer, nullable=False, default=0)
+    last_negative_at = Column(DateTime, nullable=True)
+
+
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///adaptive_rag.db')
 
 # Module-level engine, built lazily (never at import time). Constructing the
@@ -150,6 +167,52 @@ def decode_document_ids(value: str | None) -> list[str]:
     if not value:
         return []
     return value.split(",")
+
+
+def record_negative_documents(
+    db: Session, document_ids: list, now: datetime | None = None
+) -> int:
+    """Increment the penalty for each document, returning how many were touched.
+
+    Ids are coerced and de-duplicated: one thumbs-down on an answer is one
+    piece of evidence per document, even when the same document was cited
+    twice. Blank ids (the ``'unknown'`` placeholder a source-less document
+    produces) are ignored rather than accumulating a penalty on a row that
+    matches nothing.
+    """
+    stamp = now or datetime.utcnow()
+    seen: set[str] = set()
+    for raw in document_ids or []:
+        document_id = str(raw).strip()
+        if not document_id or document_id == 'unknown' or document_id in seen:
+            continue
+        seen.add(document_id)
+        row = db.get(DocumentPenalty, document_id)
+        if row is None:
+            db.add(
+                DocumentPenalty(
+                    document_id=document_id, negative_count=1, last_negative_at=stamp
+                )
+            )
+        else:
+            # The declarative Column descriptors type as Column[...] on the
+            # class, so mypy reads these instance assignments as assigning an
+            # int/datetime to a Column. They are correct at runtime.
+            row.negative_count = (row.negative_count or 0) + 1  # type: ignore[assignment]
+            row.last_negative_at = stamp  # type: ignore[assignment]
+    db.commit()
+    return len(seen)
+
+
+def fetch_document_penalties(db: Session, document_ids: list | None = None) -> list:
+    """Penalty rows, optionally restricted to ``document_ids``."""
+    query = db.query(DocumentPenalty)
+    if document_ids is not None:
+        wanted = [str(d) for d in document_ids]
+        if not wanted:
+            return []
+        query = query.filter(DocumentPenalty.document_id.in_(wanted))
+    return query.all()
 
 
 def fetch_chat_history_document_ids(db: Session, history_id: int) -> list[str]:

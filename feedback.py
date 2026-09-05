@@ -1,4 +1,9 @@
-from database import SessionLocal, Feedback, encode_document_ids
+from database import (
+    Feedback,
+    SessionLocal,
+    encode_document_ids,
+    record_negative_documents,
+)
 
 # Callback payloads are formatted as "fb_<action>_<history_id>" (see bot.py).
 _CALLBACK_PREFIX = "fb"
@@ -53,20 +58,26 @@ def save_feedback(chat_id: int, user_id: str, is_positive: bool, correction: str
         db.add(feedback)
         db.commit()
         
-        # Adaptive search update logic
-        # If negative feedback, we might want to flag documents or update their weights
+        # Adaptive search update logic.
         if not is_positive:
+            # Record the demotion inside this session, before the correction is
+            # indexed: the correction is a best-effort side effect that reaches
+            # out to the vector store, and a failure there must not lose the
+            # thing we can record reliably.
+            record_negative_documents(db, document_ids)
             process_negative_feedback(document_ids, correction)
             
     finally:
         db.close()
 
 def process_negative_feedback(document_ids: list, correction: str):
-    # This is a placeholder for retrospective re-indexing or corrective RAG
-    # In a full implementation, we might lower the weight of these documents
-    # or add the user's correction to the vector store
-    
-    # E.g., if there's a correction, index it
+    """Index the user's correction.
+
+    Demoting the documents that produced the wrong answer happens in
+    :func:`save_feedback` via :func:`database.record_negative_documents`, and
+    the demotion is applied at retrieval time by :mod:`rag`. This function is
+    only the indexing half.
+    """
     if correction:
         from rag import add_documents
         add_documents(
