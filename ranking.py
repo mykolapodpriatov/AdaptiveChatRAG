@@ -112,7 +112,8 @@ def demote(
 
     Order is by adjusted score, ties broken by the original position so the
     retriever's own ranking decides when the penalties do not, and two runs over
-    the same input agree.
+    the same input agree. Repeated document ids collapse to one row (the
+    strongest adjusted score), so one document cannot fill the result list.
 
     Args:
         candidates: Best first, as the retriever returned them.
@@ -127,20 +128,25 @@ def demote(
     """
     if k <= 0:
         return []
-    adjusted = [
-        (
-            position,
-            document_id,
-            score
-            - penalty_for(
-                penalties.get(document_id),
-                now,
-                ceiling=ceiling,
-                half_life_days=half_life_days,
-            ),
+    # One document can come back as several chunks. Keeping every copy lets
+    # that document occupy the whole result list and push the next document
+    # out. The penalty depends only on the document id, so the copies differ
+    # by raw score; keep the strongest adjusted score, and the earliest
+    # position when those scores tie.
+    best: dict[str, tuple[int, float]] = {}
+    for position, (document_id, score) in enumerate(candidates):
+        adjusted_score = score - penalty_for(
+            penalties.get(document_id),
+            now,
+            ceiling=ceiling,
+            half_life_days=half_life_days,
         )
-        for position, (document_id, score) in enumerate(candidates)
-    ]
+        current = best.get(document_id)
+        if current is None or adjusted_score > current[1] or (
+            adjusted_score == current[1] and position < current[0]
+        ):
+            best[document_id] = (position, adjusted_score)
+    adjusted = [(position, document_id, score) for document_id, (position, score) in best.items()]
     adjusted.sort(key=lambda row: (-row[2], row[0]))
     return [(document_id, score) for _position, document_id, score in adjusted[:k]]
 

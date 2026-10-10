@@ -141,6 +141,17 @@ def test_ranking_is_deterministic():
     assert first == second
 
 
+def test_a_repeated_document_does_not_fill_the_list():
+    # Two chunks of one document used to take both slots, so the next
+    # document never appeared even though k asked for two.
+    candidates = [("same", 0.9), ("same", 0.4), ("other", 0.5)]
+
+    ranked = demote(candidates, {}, k=2, now=NOW)
+
+    assert [doc for doc, _ in ranked] == ["same", "other"]
+    assert ranked[0][1] == 0.9
+
+
 def test_it_truncates_to_k():
     candidates = [(f"d{i}", 1.0 - i / 10) for i in range(9)]
 
